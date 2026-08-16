@@ -187,9 +187,24 @@ Linting:
 
 These are all sourced from the `image-template.env` file.
 
-- `image_name`: The name of the image (default: "image-template").
+- `image_name`: The name prefix of the built images (default: "bazzite-surface"). The base image variant's suffix is appended to it, so `bazzite-gnome-nvidia` produces `bazzite-surface-gnome-nvidia`.
 - `default_tag`: The default tag for the image (default: "latest").
 - `bib_image`: The Bootc Image Builder (BIB) image (default: "quay.io/centos-bootc/bootc-image-builder:latest").
+- `base_image_registry`: Registry holding the Bazzite base images (default: "ghcr.io/ublue-os").
+- `base_image_name`: The Bazzite variant to layer on top of by default (default: "bazzite").
+- `base_image_tag`: The Bazzite stream to track (default: "testing").
+- `variants`: Every Bazzite variant that gets a Surface flavour, built by `just build-all` and by the `build.yml` matrix.
+
+## Images
+
+Four images are built from the same `build.sh`, one per Bazzite variant:
+
+| Base image                             | Output image                                     |
+| -------------------------------------- | ------------------------------------------------ |
+| `ghcr.io/ublue-os/bazzite:testing`              | `ghcr.io/ublue-os/bazzite-surface`              |
+| `ghcr.io/ublue-os/bazzite-gnome:testing`        | `ghcr.io/ublue-os/bazzite-surface-gnome`        |
+| `ghcr.io/ublue-os/bazzite-nvidia:testing`       | `ghcr.io/ublue-os/bazzite-surface-nvidia`       |
+| `ghcr.io/ublue-os/bazzite-gnome-nvidia:testing` | `ghcr.io/ublue-os/bazzite-surface-gnome-nvidia` |
 
 ## Building The Image
 
@@ -200,12 +215,28 @@ All these recipes will work (with default values) without supplying any argument
 Builds a container image using Podman.
 
 ```bash
-just build $target_image $tag
+just build $target_image $tag $base_image
 ```
 
 Arguments:
 - `$target_image`: The tag you want to apply to the image (default: `$image_name`).
 - `$tag`: The tag for the image (default: `$default_tag`).
+- `$base_image`: The Bazzite variant to layer on top of (default: `$base_image_name`).
+
+For example, to build the GNOME + NVIDIA flavour:
+
+```bash
+just build bazzite-surface-gnome-nvidia latest bazzite-gnome-nvidia
+```
+
+### `just build-all`
+
+Builds all four images in sequence, using `just image_name` to derive each output
+name from its base image.
+
+```bash
+just build-all $tag
+```
 
 ### Rechunking
 We can flatten the layers of container images to make sure there isn't a single huge layer when your image gets published.

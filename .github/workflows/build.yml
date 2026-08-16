@@ -1,4 +1,3 @@
----
 name: Build container image
 on:
   pull_request:
@@ -17,13 +16,23 @@ env:
   IMAGE_REGISTRY: "ghcr.io/${{ github.repository_owner }}"  # do not edit
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}-${{ inputs.brand_name}}-${{ inputs.stream_name }}
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   build_push:
-    name: Build and push image
+    name: Build and push ${{ matrix.base_image }}
     runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Bazzite variants we build a Surface flavour of, keep in sync with the Justfile
+        base_image:
+          - bazzite
+          - bazzite-gnome
+          - bazzite-nvidia
+          - bazzite-gnome-nvidia
 
     permissions:
       contents: read
@@ -49,7 +58,7 @@ jobs:
       - name: Image Name
         id: image-name
         run: |
-          IMAGE_NAME=$(just image_name)
+          IMAGE_NAME=$(just image_name ${{ matrix.base_image }})
 
           echo "IMAGE_NAME=${IMAGE_NAME}" >> $GITHUB_ENV
 
@@ -72,7 +81,8 @@ jobs:
         run: |
           just build \
             ${IMAGE_NAME} \
-            ${DEFAULT_TAG}
+            ${DEFAULT_TAG} \
+            ${{ matrix.base_image }}
 
       # This is optional, this provides smaller delta updates
       - name: Rechunk with rpm-ostree

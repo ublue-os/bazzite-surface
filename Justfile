@@ -8,6 +8,12 @@ export image_keywords := env_var("IMAGE_KEYWORDS")
 export image_logo_url := env_var("IMAGE_LOGO_URL")
 export default_tag := env_var("DEFAULT_TAG")
 export bib_image := env_var("BIB_IMAGE")
+export base_image_registry := env_var("BASE_IMAGE_REGISTRY")
+export base_image_name := env_var("BASE_IMAGE_NAME")
+export base_image_tag := env_var("BASE_IMAGE_TAG")
+
+# Bazzite variants we build a Surface flavour of, keep in sync with .github/workflows/build.yml
+export variants := "bazzite bazzite-gnome bazzite-nvidia bazzite-gnome-nvidia"
 
 alias build-vm := build-qcow2
 alias rebuild-vm := rebuild-qcow2
@@ -80,25 +86,29 @@ sudoif command *args:
 # Arguments:
 #   $target_image - The tag you want to apply to the image (default: $image_name).
 #   $tag - The tag for the image (default: $default_tag).
+#   $base_image - The Bazzite variant to layer on top of (default: $base_image_name).
 #
 # The script constructs the version string using the tag and the current date.
 # If the git working directory is clean, it also includes the short SHA of the current HEAD.
 #
-# just build $target_image $tag
+# just build $target_image $tag $base_image
 #
 # Example usage:
-#   just build myimage mytag
+#   just build myimage mytag bazzite-gnome
 #
-# This will build an image 'myimage:mytag'
+# This will build an image 'myimage:mytag' on top of bazzite-gnome
 #
 
 # Build the image using the specified parameters
-build $target_image=image_name $tag=default_tag:
+build $target_image=image_name $tag=default_tag $base_image=base_image_name:
     #!/usr/bin/env bash
 
     set -euox pipefail
 
     BUILD_ARGS=()
+    BUILD_ARGS+=("--build-arg" "BASE_IMAGE_NAME=${base_image}")
+    BUILD_ARGS+=("--build-arg" "BASE_IMAGE_TAG={{ base_image_tag }}")
+
     LABELS=()
     if [[ -z "$(git status -s)" ]]; then
         GIT_SHA=$(git rev-parse --short HEAD)
@@ -118,13 +128,24 @@ build $target_image=image_name $tag=default_tag:
     LABELS+=("--label" "io.artifacthub.package.prerelease=false")
     LABELS+=("--label" "org.opencontainers.image.created=$(date -u +%Y\-%m\-%d\T%H\:%M\:%S\Z)")
     LABELS+=("--label" "org.opencontainers.image.description={{ image_desc }}")
-    LABELS+=("--label" "org.opencontainers.image.title={{ image_name }}")
+    LABELS+=("--label" "org.opencontainers.image.title=${target_image}")
+    LABELS+=("--label" "org.opencontainers.image.base.name={{ base_image_registry }}/${base_image}:{{ base_image_tag }}")
     LABELS+=("--label" "org.opencontainers.image.vendor={{ repo_organization }}")
 
     # This actually builds the image!
     PODMAN_BUILD_ARGS=("${BUILD_ARGS[@]}" "${LABELS[@]}" --pull=newer --tag "${target_image}:${tag}" --file Containerfile)
 
     podman build "${PODMAN_BUILD_ARGS[@]}" .
+
+# Build every Surface variant locally
+build-all $tag=default_tag:
+    #!/usr/bin/env bash
+
+    set -euo pipefail
+
+    for base_image in {{ variants }}; do
+        just build "$(just image_name "${base_image}")" "${tag}" "${base_image}"
+    done
 
 # Split the image for smaller updates (New)!
 rechunk $target_image=image_name $tag=default_tag:
@@ -240,13 +261,16 @@ tag-images $target_image=image_name $tag=default_tag tags="":
     podman images
 
 # Image Name
+# Maps a Bazzite variant onto its Surface counterpart by swapping the
+# "bazzite" prefix for "bazzite-surface". Eg "bazzite" -> "bazzite-surface",
+# "bazzite-gnome-nvidia" -> "bazzite-surface-gnome-nvidia".
 [group('Utility')]
 [private]
-image_name $target_image=image_name:
+image_name $base_image=base_image_name:
     #!/usr/bin/env bash
     set -eoux pipefail
 
-    echo "${image_name}"
+    echo "${image_name}${base_image#bazzite}"
 
 # Command: _rootful_load_image
 # Description: This script checks if the current user is root or running under sudo. If not, it attempts to resolve the image tag using podman inspect.
